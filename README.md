@@ -20,7 +20,7 @@
 
 > 番剧地区限制请继续使用 [解除B站区域限制](https://github.com/ipcjs/bilibili-helper) 或 BiliRoaming 等方案；本脚本与其互补，**只补 BV 壳 + view404** 这一小段。
 
-## 典型 API（例 `BV1ShTF6qEuw`）
+## 典型 API（例 `BV1GJ411x7h7`）
 
 | API | 海外常见结果 |
 |-----|----------------|
@@ -38,7 +38,7 @@
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/)
 2. 新建脚本，粘贴 `bilibili_av_shell_playfix.user.js` 全文
-3. 打开测试链接：https://www.bilibili.com/video/BV1ShTF6qEuw/?p=1
+3. 打开测试链接：https://www.bilibili.com/video/BV1GJ411x7h7/
 
 控制台过滤：`AV Shell Playfix`
 

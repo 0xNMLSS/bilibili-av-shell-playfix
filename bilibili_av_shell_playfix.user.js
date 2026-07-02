@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.6.4
+// @version      0.6.5
 // @description  仅 /video/BV* · 不解番剧。通过 pagelist 与 UGC playurl 替换 view 数据, 实现版权 BV 壳在 view404 时的网页播放;
 // @author       0xNMLSS
 // @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
@@ -234,17 +234,155 @@
       return fetchJson(`https://api.bilibili.com${LEGACY_PLAYURL_PATH}?${params}`);
     }
 
-    function pickPlayurlSource(playurlJson) {
+    function pickPlayurlSource(playurlJson, preferBackup = false) {
       const data = playurlJson?.data;
       if (!data) return null;
       if (Array.isArray(data.durl) && data.durl[0]?.url) {
-        return { type: 'mp4', url: data.durl[0].url, durationMs: data.timelength || 0 };
+        const entry = data.durl[0];
+        let url = entry.url;
+        if (preferBackup && Array.isArray(entry.backup_url) && entry.backup_url[0]) {
+          url = entry.backup_url[0];
+        }
+        return {
+          type: 'mp4',
+          url,
+          durationMs: data.timelength || 0,
+          hasBackup: Array.isArray(entry.backup_url) && entry.backup_url.length > 0,
+        };
       }
       const video = data.dash?.video?.[0];
       if (video?.baseUrl) {
         return { type: 'dash', url: video.baseUrl, durationMs: (data.dash.duration || 0) * 1000 };
       }
       return null;
+    }
+
+    function hideNativePlayerChildren(host, keep) {
+      for (const child of host.children) {
+        if (child === keep) continue;
+        child.dataset.avShellPlayfixHidden = '1';
+        child.style.visibility = 'hidden';
+        child.style.pointerEvents = 'none';
+      }
+    }
+
+    function attachStreamRecovery(video, bvid, cid, playerRef) {
+      let recovering = false;
+      let recoverTimer = 0;
+
+      const reloadSource = async (reason) => {
+        if (recovering || playerRef.userPaused) return;
+        recovering = true;
+        const savedTime = video.currentTime;
+        const wasPlaying = !video.paused;
+        playerRef.useBackup = !playerRef.useBackup;
+        log('stream recover', reason, 'backup=', playerRef.useBackup);
+        try {
+          const playurlJson = await fetchLegacyPlayurl(bvid, cid);
+          if (playurlJson.code !== 0) throw new Error(playurlJson.message || String(playurlJson.code));
+          const source = pickPlayurlSource(playurlJson, playerRef.useBackup);
+          if (!source) throw new Error('no source');
+          video.src = source.url.replace(/^http:/, 'https:');
+          video.load();
+          await new Promise((resolve, reject) => {
+            const onReady = () => {
+              video.removeEventListener('loadedmetadata', onReady);
+              video.removeEventListener('error', onErr);
+              resolve();
+            };
+            const onErr = () => {
+              video.removeEventListener('loadedmetadata', onReady);
+              video.removeEventListener('error', onErr);
+              reject(new Error('reload metadata failed'));
+            };
+            video.addEventListener('loadedmetadata', onReady);
+            video.addEventListener('error', onErr);
+          });
+          if (savedTime > 0 && savedTime < video.duration) {
+            video.currentTime = savedTime;
+          }
+          if (wasPlaying) {
+            await video.play();
+          }
+        } catch (err) {
+          log('stream recover failed', err);
+        } finally {
+          recovering = false;
+        }
+      };
+
+      const scheduleRecover = (reason) => {
+        if (recoverTimer) clearTimeout(recoverTimer);
+        recoverTimer = setTimeout(() => reloadSource(reason), 400);
+      };
+
+      video.addEventListener('error', () => scheduleRecover('error'));
+      video.addEventListener('stalled', () => scheduleRecover('stalled'));
+      video.addEventListener('waiting', () => {
+        if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
+          scheduleRecover('waiting');
+        }
+      });
+      video.addEventListener('pause', () => {
+        if (playerRef.userPaused || video.ended || recovering) return;
+        if (video.currentTime <= 0) return;
+        setTimeout(() => {
+          if (!playerRef.userPaused && video.paused && !video.ended && document.visibilityState === 'visible') {
+            log('unexpected pause at', video.currentTime);
+            video.play().catch(() => scheduleRecover('unexpected-pause'));
+          }
+        }, 250);
+      });
+      video.addEventListener('play', () => {
+        playerRef.userPaused = false;
+      });
+      video.addEventListener('click', () => {
+        playerRef.lastInteraction = Date.now();
+      });
+      video.addEventListener('keydown', () => {
+        playerRef.lastInteraction = Date.now();
+      });
+      const origPause = video.pause.bind(video);
+      video.pause = function () {
+        if (Date.now() - (playerRef.lastInteraction || 0) < 500) {
+          playerRef.userPaused = true;
+        }
+        return origPause();
+      };
+    }
+
+    function ensurePlayerRoot(host) {
+      let root = host.querySelector('#av-shell-playfix-root');
+      if (root) return root;
+      root = document.createElement('div');
+      root.id = 'av-shell-playfix-root';
+      root.dataset.avShellPlayfix = 'root';
+      root.style.cssText =
+        'position:absolute;inset:0;z-index:5;width:100%;height:100%;min-height:480px;background:#000';
+      host.style.position = 'relative';
+      host.appendChild(root);
+      hideNativePlayerChildren(host, root);
+      return root;
+    }
+
+    function startHostGuard(bvid, cid, playerRef) {
+      if (playerRef.guard) return;
+      playerRef.guard = new MutationObserver(() => {
+        const host = findPlayerHost();
+        const root = document.querySelector('#av-shell-playfix-root');
+        const video = playerRef.video;
+        if (!recovery.armed) return;
+        if (!host || !root?.isConnected || !video?.isConnected) {
+          log('player host lost, remounting');
+          playerRef.guard.disconnect();
+          playerRef.guard = null;
+          playerRef.video = null;
+          mountDirectPlayer(bvid, cid);
+          return;
+        }
+        hideNativePlayerChildren(host, root);
+      });
+      playerRef.guard.observe(document.documentElement, { childList: true, subtree: true });
     }
 
     function findPlayerHost() {
@@ -256,11 +394,26 @@
       );
     }
 
+    const pageLoc = parsePageLocation(location.href);
+    const recovery = {
+      armed: false,
+      bvid: pageLoc.bvid,
+      cid: null,
+      toastShown: false,
+      player: null,
+    };
+
     function mountDirectPlayer(bvid, cid) {
       const mount = () => {
         const host = findPlayerHost();
         if (!host) return false;
-        if (host.querySelector('[data-av-shell-playfix="video"]')) return true;
+
+        const existingRoot = host.querySelector('#av-shell-playfix-root');
+        const existingVideo = recovery.player?.video;
+        if (existingRoot?.isConnected && existingVideo?.isConnected) {
+          hideNativePlayerChildren(host, existingRoot);
+          return true;
+        }
 
         let playurlJson;
         try {
@@ -274,36 +427,62 @@
           return false;
         }
 
-        const source = pickPlayurlSource(playurlJson);
+        const source = pickPlayurlSource(playurlJson, false);
         if (!source) {
           log('no playable source in legacy playurl');
           return false;
         }
 
-        host.innerHTML = '';
         host.style.minHeight = '480px';
         host.style.width = '100%';
-        host.style.position = 'relative';
         host.style.background = '#000';
 
-        const video = document.createElement('video');
-        video.dataset.avShellPlayfix = 'video';
-        video.controls = true;
-        video.playsInline = true;
-        video.preload = 'auto';
-        video.style.cssText =
-          'width:100%;height:100%;min-height:480px;background:#000;display:block';
+        const root = ensurePlayerRoot(host);
+        let shadow = root.shadowRoot;
+        if (!shadow) {
+          shadow = root.attachShadow({ mode: 'closed' });
+        }
+
+        let video = shadow.querySelector('video');
+        if (!video) {
+          video = document.createElement('video');
+          video.dataset.avShellPlayfix = 'video';
+          video.controls = true;
+          video.playsInline = true;
+          video.preload = 'auto';
+          video.style.cssText =
+            'width:100%;height:100%;min-height:480px;background:#000;display:block';
+          shadow.appendChild(video);
+        }
+
+        const playerRef = {
+          video,
+          useBackup: false,
+          userPaused: false,
+          lastInteraction: 0,
+          guard: recovery.player?.guard || null,
+        };
+        if (!video.dataset.avShellPlayfixBound) {
+          video.dataset.avShellPlayfixBound = '1';
+          attachStreamRecovery(video, bvid, cid, playerRef);
+        }
+
         video.src = source.url.replace(/^http:/, 'https:');
+        recovery.player = playerRef;
 
-        video.addEventListener('loadedmetadata', () => {
-          log('direct player ready', 'duration', video.duration, 'type', source.type);
-          if (video.duration > 0 && video.duration < 60) {
-            log('warn: suspicious short duration', video.duration);
-          }
-        });
+        video.addEventListener(
+          'loadedmetadata',
+          () => {
+            log('direct player ready', 'duration', video.duration, 'type', source.type);
+            if (video.duration > 0 && video.duration < 60) {
+              log('warn: suspicious short duration', video.duration);
+            }
+          },
+          { once: true },
+        );
 
-        host.appendChild(video);
-        log('direct player mounted', bvid, 'cid', cid, source.type);
+        startHostGuard(bvid, cid, playerRef);
+        log('direct player mounted', bvid, 'cid', cid, source.type, 'shadow');
         return true;
       };
 
@@ -312,7 +491,7 @@
         if (mount()) observer.disconnect();
       });
       observer.observe(document.documentElement, { childList: true, subtree: true });
-      setTimeout(() => observer.disconnect(), 20000);
+      setTimeout(() => observer.disconnect(), 60000);
     }
 
     function scheduleDirectPlayer(bvid, cid) {
@@ -345,14 +524,6 @@
       const err = state?.error;
       return err && (err.trueCode === -404 || err.code === 404);
     }
-
-    const pageLoc = parsePageLocation(location.href);
-    const recovery = {
-      armed: false,
-      bvid: pageLoc.bvid,
-      cid: null,
-      toastShown: false,
-    };
 
     function markRecovered(bvid, cid, pageIndex) {
       recovery.armed = true;

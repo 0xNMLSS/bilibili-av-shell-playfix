@@ -8,7 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Point metadata and docs to https://github.com/0xNMLSS/bilibili-av-shell-playfix
+- Default test URL: `https://www.bilibili.com/video/BV1GJ411x7h7/`
+
+## [0.6.5] - 2026-07-03
+
+### Fixed
+
+- Playback stall / unrecoverable pause: isolate player in Shadow DOM overlay, hide native player DOM, remount if removed, refresh stream on error/stalled/waiting with backup CDN URL.
 
 ## [0.6.4] - 2026-07-03
 
