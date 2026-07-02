@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-07-03
+
+### Added
+
+- Rick Roll easter egg on test BV `BV1GJ411x7h7`: styled console message and toast when playback mounts.
+
 ### Changed
 
 - Default test URL: `https://www.bilibili.com/video/BV1GJ411x7h7/`

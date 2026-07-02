@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.6.5
+// @version      0.6.6
 // @description  仅 /video/BV* · 不解番剧。通过 pagelist 与 UGC playurl 替换 view 数据, 实现版权 BV 壳在 view404 时的网页播放;
 // @author       0xNMLSS
 // @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
@@ -25,6 +25,7 @@
     if (!/\/video\/(BV[\w]+|av\d+|AV\d+)/i.test(location.pathname)) return;
 
     const TAG = '[AV Shell Playfix]';
+    const EASTER_EGG_BVID = 'BV1GJ411x7h7';
     const VIEW_PATH = '/x/web-interface/view';
     const PAGELIST_PATH = '/x/player/pagelist';
     const LEGACY_PLAYURL_PATH = '/x/player/playurl';
@@ -32,6 +33,17 @@
 
     function log(...args) {
       console.log(TAG, ...args);
+    }
+
+    function triggerRickRollEgg(bvid) {
+      if (bvid !== EASTER_EGG_BVID || recovery.eggShown) return;
+      recovery.eggShown = true;
+      console.log(
+        '%cNever gonna give you up ♪%c· lol you got rickrolled!',
+        'font-size:15px;font-weight:bold;color:#00a1d6',
+        'font-size:12px;color:#888',
+      );
+      toast('Never gonna give you up ♪ ');
     }
 
     function toast(msg) {
@@ -400,6 +412,7 @@
       bvid: pageLoc.bvid,
       cid: null,
       toastShown: false,
+      eggShown: false,
       player: null,
     };
 
@@ -531,7 +544,11 @@
       recovery.cid = cid;
       if (!recovery.toastShown) {
         recovery.toastShown = true;
-        toast('AV Shell Playfix：已通过备用接口恢复视频信息');
+        if (bvid === EASTER_EGG_BVID) {
+          triggerRickRollEgg(bvid);
+        } else {
+          toast('AV Shell Playfix：已通过备用接口恢复视频信息');
+        }
       }
       scheduleDirectPlayer(bvid, cid);
     }
@@ -765,6 +782,9 @@
       return nativeSend.apply(this, args);
     };
 
+    if (pageLoc.bvid === EASTER_EGG_BVID) {
+      log('lol you got rickrolled!');
+    }
     log('hooks installed for', location.href);
   }
 
