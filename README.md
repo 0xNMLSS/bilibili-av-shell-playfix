@@ -36,9 +36,16 @@
 
 ## 安装
 
-1. 安装 [Tampermonkey](https://www.tampermonkey.net/)
-2. 新建脚本，粘贴 `bilibili_av_shell_playfix.user.js` 全文
-3. 打开测试链接：https://www.bilibili.com/video/BV1GJ411x7h7/
+1. 安装 [Tampermonkey](https://www.tampermonkey.net/)（或 Violentmonkey 等用户脚本管理器）
+2. 打开 Greasy Fork 脚本页：[解除B站版权BV视频404播放限制](https://greasyfork.org/zh-CN/scripts/585302-%E8%A7%A3%E9%99%A4b%E7%AB%99%E7%89%88%E6%9D%83bv%E8%A7%86%E9%A2%91404%E6%92%AD%E6%94%BE%E9%99%90%E5%88%B6)
+3. 点击 **「安装此脚本」**，在扩展弹窗中确认安装
+4. 打开测试链接：https://www.bilibili.com/video/BV1GJ411x7h7/
+
+Tampermonkey 会按 Greasy Fork 源自动检查更新。
+
+### 手动安装（开发）
+
+若要试用仓库内尚未发布的版本：新建脚本，粘贴 `bilibili_av_shell_playfix.user.js` 全文。
 
 控制台过滤：`AV Shell Playfix`
 

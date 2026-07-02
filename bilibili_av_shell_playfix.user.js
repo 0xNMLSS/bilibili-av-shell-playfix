@@ -2,9 +2,11 @@
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
 // @version      0.6.10
-// @description  仅 /video/BV* · 不解番剧。通过 pagelist 与 UGC playurl 替换 view 数据, 实现版权 BV 壳在 view404 时的网页播放;测试视频:https://www.bilibili.com/video/BV1GJ411x7h7/
+// @description  仅 /video/BV* · 不解番剧。通过 pagelist 与 UGC playurl 替换 view 数据, 实现版权 BV 壳在 view404 时的网页播放;    测试视频:https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
 // @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
+// @downloadURL  https://update.greasyfork.org/scripts/585302/%E8%A7%A3%E9%99%A4b%E7%AB%99%E7%89%88%E6%9D%83bv%E8%A7%86%E9%A2%91404%E6%92%AD%E6%94%BE%E9%99%90%E5%88%B6.user.js
+// @updateURL    https://update.greasyfork.org/scripts/585302/%E8%A7%A3%E9%99%A4b%E7%AB%99%E7%89%88%E6%9D%83bv%E8%A7%86%E9%A2%91404%E6%92%AD%E6%94%BE%E9%99%90%E5%88%B6.user.js
 // @compatible   chrome
 // @compatible   firefox
 // @license      MIT
