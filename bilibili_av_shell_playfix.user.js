@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.6.8
+// @version      0.6.10
 // @description  仅 /video/BV* · 不解番剧。通过 pagelist 与 UGC playurl 替换 view 数据, 实现版权 BV 壳在 view404 时的网页播放;测试视频:https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
 // @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
@@ -328,41 +328,40 @@
       };
 
       const scheduleRecover = (reason) => {
+        if (playerRef.userPaused) return;
         if (recoverTimer) clearTimeout(recoverTimer);
         recoverTimer = setTimeout(() => reloadSource(reason), 400);
       };
 
+      let lastGesture = 0;
+      const markGesture = () => {
+        lastGesture = Date.now();
+      };
+      video.addEventListener('pointerdown', markGesture, true);
+      video.addEventListener('keydown', markGesture, true);
+
       video.addEventListener('error', () => scheduleRecover('error'));
       video.addEventListener('stalled', () => scheduleRecover('stalled'));
       video.addEventListener('waiting', () => {
+        if (playerRef.userPaused) return;
         if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
           scheduleRecover('waiting');
         }
       });
       video.addEventListener('pause', () => {
-        if (playerRef.userPaused || video.ended || recovering) return;
-        if (video.currentTime <= 0) return;
-        setTimeout(() => {
-          if (!playerRef.userPaused && video.paused && !video.ended && document.visibilityState === 'visible') {
-            log('unexpected pause at', video.currentTime);
-            video.play().catch(() => scheduleRecover('unexpected-pause'));
-          }
-        }, 250);
+        if (video.ended || recovering) return;
+        // Native controls pause via UA shadow DOM — no JS pause() call, only this event.
+        if (playerRef.userPaused || Date.now() - lastGesture < 800) {
+          playerRef.userPaused = true;
+        }
       });
       video.addEventListener('play', () => {
         playerRef.userPaused = false;
       });
-      video.addEventListener('click', () => {
-        playerRef.lastInteraction = Date.now();
-      });
-      video.addEventListener('keydown', () => {
-        playerRef.lastInteraction = Date.now();
-      });
       const origPause = video.pause.bind(video);
       video.pause = function () {
-        if (Date.now() - (playerRef.lastInteraction || 0) < 500) {
-          playerRef.userPaused = true;
-        }
+        // ponytail: stalls fire 'pause' without calling pause(); only JS pause() is user intent
+        playerRef.userPaused = true;
         return origPause();
       };
     }
@@ -475,7 +474,6 @@
           video,
           useBackup: false,
           userPaused: false,
-          lastInteraction: 0,
           guard: recovery.player?.guard || null,
         };
         if (!video.dataset.avShellPlayfixBound) {

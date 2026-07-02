@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-07-03
+
+### Fixed
+
+- User still could not pause: native `<video controls>` pause bypasses JS `video.pause()` entirely; removed auto-resume-on-pause and detect user pause via pointer/key gesture instead.
+
+## [0.6.9] - 2026-07-03
+
+### Fixed
+
+- User could not pause: native control bar calls `pause()` before `click`, so the 500ms interaction window never marked user pauses and auto-resume kicked in 250ms later.
+
 ## [0.6.8] - 2026-07-03
 
 ### Changed
