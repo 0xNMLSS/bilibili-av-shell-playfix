@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.6.6
+// @version      0.6.8
 // @description  仅 /video/BV* · 不解番剧。通过 pagelist 与 UGC playurl 替换 view 数据, 实现版权 BV 壳在 view404 时的网页播放;
 // @author       0xNMLSS
 // @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
@@ -35,17 +35,6 @@
       console.log(TAG, ...args);
     }
 
-    function triggerRickRollEgg(bvid) {
-      if (bvid !== EASTER_EGG_BVID || recovery.eggShown) return;
-      recovery.eggShown = true;
-      console.log(
-        '%cNever gonna give you up ♪%c· lol you got rickrolled!',
-        'font-size:15px;font-weight:bold;color:#00a1d6',
-        'font-size:12px;color:#888',
-      );
-      toast('Never gonna give you up ♪ ');
-    }
-
     function toast(msg) {
       log(msg);
       const show = () => {
@@ -54,6 +43,21 @@
         el.style.cssText =
           'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:999999;' +
           'background:rgba(0,0,0,.78);color:#fff;padding:10px 16px;border-radius:8px;' +
+          'font-size:14px;max-width:90vw;pointer-events:none';
+        (document.body || document.documentElement).appendChild(el);
+        setTimeout(() => el.remove(), 5000);
+      };
+      if (document.body) show();
+      else document.addEventListener('DOMContentLoaded', show, { once: true });
+    }
+
+    function showEggPopup() {
+      const show = () => {
+        const el = document.createElement('div');
+        el.textContent = 'Never gonna give you up';
+        el.style.cssText =
+          'position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:999999;' +
+          'background:rgba(255,102,153,.92);color:#fff;padding:10px 16px;border-radius:8px;' +
           'font-size:14px;max-width:90vw;pointer-events:none';
         (document.body || document.documentElement).appendChild(el);
         setTimeout(() => el.remove(), 5000);
@@ -412,7 +416,6 @@
       bvid: pageLoc.bvid,
       cid: null,
       toastShown: false,
-      eggShown: false,
       player: null,
     };
 
@@ -544,10 +547,9 @@
       recovery.cid = cid;
       if (!recovery.toastShown) {
         recovery.toastShown = true;
+        toast('AV Shell Playfix：已通过备用接口恢复视频信息');
         if (bvid === EASTER_EGG_BVID) {
-          triggerRickRollEgg(bvid);
-        } else {
-          toast('AV Shell Playfix：已通过备用接口恢复视频信息');
+          showEggPopup();
         }
       }
       scheduleDirectPlayer(bvid, cid);
@@ -782,9 +784,6 @@
       return nativeSend.apply(this, args);
     };
 
-    if (pageLoc.bvid === EASTER_EGG_BVID) {
-      log('lol you got rickrolled!');
-    }
     log('hooks installed for', location.href);
   }
 

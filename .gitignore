@@ -1,15 +1,2 @@
-docs/superpowers/plans/2026-07-03-av-shell-playfix.md
-docs/superpowers/specs/2026-07-03-av-shell-playfix-design.md
-debug/chrome_probe.py
-debug/chrome_test.py
-debug/chrome-test.mjs
-debug/chrome-test.png
-debug/compare_ssr.py
-debug/embed_player_test.py
-debug/embed_playurl_probe.py
-debug/embed-player.png
-debug/native-page.png
-debug/parse_ssr.py
-debug/player_probe.py
-debug/player-probe.png
-debug/with-script.png
+docs/*
+debug/*

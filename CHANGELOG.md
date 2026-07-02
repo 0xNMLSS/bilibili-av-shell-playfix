@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-07-03
+
+### Changed
+
+- Easter egg: extra pink popup below the recovery toast on `BV1GJ411x7h7` only; removed console styling and player-ready hooks.
+
+## [0.6.7] - 2026-07-03
+
+### Fixed
+
+- Easter egg no longer hooks into `markRecovered` or replaces the recovery toast; console-only message after playback is ready. Removed test URL from `@description` metadata.
+
 ## [0.6.6] - 2026-07-03
 
 ### Added
