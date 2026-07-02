@@ -1,6 +1,10 @@
 {
   "name": "bilibili-av-shell-playfix",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/0xNMLSS/bilibili-av-shell-playfix.git"
+  },
   "type": "module",
   "scripts": {
     "debug:chrome": "node debug/chrome-test.mjs"

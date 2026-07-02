@@ -1,5 +1,7 @@
 # 解除B站版权BV视频404播放限制
 
+仓库：[0xNMLSS/bilibili-av-shell-playfix](https://github.com/0xNMLSS/bilibili-av-shell-playfix)
+
 参考 [ipcjs/解除B站区域限制](https://github.com/ipcjs/bilibili-helper) 的命名与思路。
 
 ## 适用范围

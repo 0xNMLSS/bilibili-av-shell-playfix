@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Point metadata and docs to https://github.com/0xNMLSS/bilibili-av-shell-playfix
+
 ## [0.6.4] - 2026-07-03
 
 ### Changed
@@ -66,5 +70,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Initial Tampermonkey script: recover AV-shell videos when `view` returns `-404` by synthesizing metadata from `pagelist` and falling back to legacy UGC `playurl`.
 - Verified API path for example `BV1ShTF6qEuw`: UGC playurl works; PGC playurl returns `-404` without `ep_id`.
 
-[Unreleased]: https://github.com/local/av-shell-playfix/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/local/av-shell-playfix/releases/tag/v0.1.0
+[Unreleased]: https://github.com/0xNMLSS/bilibili-av-shell-playfix/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/0xNMLSS/bilibili-av-shell-playfix/releases/tag/v0.6.4
+[0.1.0]: https://github.com/0xNMLSS/bilibili-av-shell-playfix/releases/tag/v0.1.0

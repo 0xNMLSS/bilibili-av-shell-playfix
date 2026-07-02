@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
-// @namespace    https://github.com/unblockbilioversealimit
+// @namespace    https://github.com/0xNMLSS
 // @version      0.6.4
 // @description  仅 /video/BV* · 不解番剧。通过 pagelist 与 UGC playurl 替换 view 数据, 实现版权 BV 壳在 view404 时的网页播放;
-// @author       unblockbilioversealimit
-// @supportURL   https://github.com/unblockbilioversealimit/bilibili-view404-unblock
+// @author       0xNMLSS
+// @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
 // @compatible   chrome
 // @compatible   firefox
 // @license      MIT
