@@ -1,0 +1,11 @@
+{
+  "name": "bilibili-av-shell-playfix",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "debug:chrome": "node debug/chrome-test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.52.0"
+  }
+}
