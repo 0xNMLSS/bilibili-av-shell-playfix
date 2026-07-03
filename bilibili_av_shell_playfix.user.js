@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.8.0
+// @version      0.8.1
 // @match        *://player.bilibili.com/player.html*
 // @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。
 // @description  测试：https://www.bilibili.com/video/BV1GJ411x7h7/
@@ -61,8 +61,29 @@
       const style = document.createElement('style');
       style.textContent =
         '.bpx-player-is-outside-backdrop,[class*="outside-jump"],[class*="OutsideJump"],' +
-        '.bpx-player-inactive-mask a[href*="/video/"]{pointer-events:none!important}';
+        '[class*="outside-backdrop"],[class*="OutsideBackdrop"],' +
+        '.bpx-player-inactive-mask a[href*="/video/"],' +
+        '.bpx-player-ctrl-btn-home{display:none!important;visibility:hidden!important;' +
+        'pointer-events:none!important}';
       (document.head || document.documentElement).appendChild(style);
+
+      const mark = 'data-av-shell-hidden-promo';
+      const scanPromo = () => {
+        for (const el of document.querySelectorAll(`a, button, div, span`)) {
+          if (!(el instanceof HTMLElement) || el.closest(`[${mark}]`)) continue;
+          const text = el.textContent?.replace(/\s+/g, '') || '';
+          if (!text.includes('进入哔哩哔哩') || !text.includes('更高清')) continue;
+          if (text.length > 40) continue;
+          el.setAttribute(mark, '1');
+          el.style.setProperty('display', 'none', 'important');
+        }
+      };
+      scanPromo();
+      new MutationObserver(scanPromo).observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
     }
 
     function blockVideoPageLinks() {
