@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-07-03
+
+### Fixed
+
+- Recommend/related video clicks use full page navigation when embed mode is active; avoids SPA `switchVideo` calling `reload` on a hidden native player.
+
 ## [0.8.3] - 2026-07-03
 
 ### Fixed

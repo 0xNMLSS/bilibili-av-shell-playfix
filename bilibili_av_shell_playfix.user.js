@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.8.3
+// @version      0.8.4
 // @match        *://player.bilibili.com/player.html*
 // @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。\n\n测试：https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
@@ -768,6 +768,63 @@
       return blockErrorRedirect(url) || blockEmbedNavigate(url);
     }
 
+    function installRecommendNavFix() {
+      const RECO_AREA =
+        '#recommend, #reco_wrap, .rec-list, .recommend-container, .recommend-list-v1';
+
+      function resolveRecommendHref(target) {
+        if (!(target instanceof Element)) return null;
+        let area = target.closest(RECO_AREA);
+        if (!area) {
+          const card = target.closest('.video-page-card-small, .rec-item, .bili-video-card');
+          if (!card?.closest('.right-container, #recommend')) return null;
+          area = card;
+        }
+
+        const direct = target.closest('a[href*="/video/"]');
+        if (direct) {
+          try {
+            return new URL(direct.href, location.origin).href;
+          } catch (_) {
+            return null;
+          }
+        }
+        const link = area.querySelector('a[href*="/video/"]');
+        if (!link) return null;
+        try {
+          return new URL(link.href, location.origin).href;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (!recovery.armed) return;
+          if (e.button !== 0) return;
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          if (!(e.target instanceof Element)) return;
+          if (e.target.closest('#av-shell-playfix-root, iframe[data-av-shell-playfix]')) return;
+
+          const href = resolveRecommendHref(e.target);
+          if (!href) return;
+
+          const match = href.match(/\/video\/(BV[\w]+)/i);
+          if (!match) return;
+          const targetBvid = match[1].toUpperCase();
+          const currentBvid = (recovery.bvid || pageLoc.bvid || '').toUpperCase();
+          if (targetBvid === currentBvid) return;
+
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          location.assign(href);
+        },
+        true,
+      );
+    }
+
     const nativeAssign = Location.prototype.assign;
     Location.prototype.assign = function (url) {
       if (shouldBlockNavigation(url)) {
@@ -1001,6 +1058,7 @@
       return nativeSend.apply(this, args);
     };
 
+    installRecommendNavFix();
     log('hooks installed for', location.href);
   }
 
