@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-03
+
+### Fixed
+
+- Normal BV SPA navigation: after first successful `view`/`view/detail` probe, pass through native fetch/XHR so title, comments, and sidebar update on recommend switch.
+
+## [0.9.0] - 2026-07-03
+
+### Changed
+
+- Zero-intrusion on normal BV pages: recommend SPA, no global Location patch, no embed mount.
+- Recovery mode lazy-activates after `view -404`: embed + navigation guard + recommend full-page nav.
+- fetch/XHR hooks only intercept `view` / `view/detail`; other requests passthrough on idle pages.
+
+### Removed
+
+- Parent-page playurl recovery hook (embed iframe fetches playurl itself).
+- Global recommend click hijack on all `/video/BV*` pages.
+
+### Fixed
+
+- Normal videos: sidebar/bottom recommend uses native SPA again.
+- Shell videos: recommend still uses full page navigation (avoids `switchVideo reload null`).
+
 ## [0.8.7] - 2026-07-03
 
 ### Fixed

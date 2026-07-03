@@ -39,6 +39,14 @@
 3. 阻止跳转首页错误页
 4. 挂载 `player.bilibili.com` embed 播放器（完整 B 站 UI + 弹幕）；iframe 内修复单击暂停/双击全屏
 
+### 正常视频 vs 版权壳（view404）
+
+| | 正常视频 (`view: 0`) | 版权壳 (`view: -404`) |
+|--|---------------------|----------------------|
+| 脚本行为 | 无侵入（等同未安装） | 合成 metadata + embed 播放 |
+| 推荐视频点击 | B 站原生 SPA 切换 | 整页跳转 |
+| 播放器 | 页面原生 bpx-player | `player.bilibili.com` iframe |
+
 ## 安装
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/)（或 Violentmonkey 等用户脚本管理器）

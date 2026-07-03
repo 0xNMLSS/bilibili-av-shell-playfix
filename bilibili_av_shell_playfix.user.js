@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.8.7
+// @version      0.9.1
 // @match        *://player.bilibili.com/player.html*
 // @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。\n\n测试：https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
@@ -85,11 +85,15 @@
       });
     }
 
-    function blockVideoPageLinks() {
+    function blockOutsideJumpLinks() {
       document.addEventListener(
         'click',
         (e) => {
-          const link = e.target.closest?.('a[href*="/video/"], [data-href*="/video/"]');
+          const link = e.target.closest?.(
+            '.bpx-player-inactive-mask a[href*="/video/"], ' +
+              '[class*="outside-jump"] a, [class*="OutsideJump"] a, ' +
+              '.bpx-player-ctrl-btn-home',
+          );
           if (!link) return;
           e.preventDefault();
           e.stopPropagation();
@@ -184,7 +188,7 @@
     }
 
     hideOutsideOverlay();
-    blockVideoPageLinks();
+    blockOutsideJumpLinks();
 
     const start = Date.now();
     const timer = setInterval(() => {
@@ -208,8 +212,6 @@
     const TAGS_PATH = '/x/tag/archive/tags';
     const DESC_PATH = '/x/web-interface/archive/desc';
     const PAGELIST_PATH = '/x/player/pagelist';
-    const LEGACY_PLAYURL_PATH = '/x/player/playurl';
-    const WBI_PLAYURL_PATH = '/x/player/wbi/playurl';
 
     function log(...args) {
       console.log(TAG, ...args);
@@ -510,42 +512,6 @@
       };
     }
 
-    function fetchLegacyPlayurl(bvid, cid) {
-      const params = new URLSearchParams({
-        bvid,
-        cid: String(cid),
-        qn: '80',
-        fnval: '0',
-        fnver: '0',
-        platform: 'pc',
-        high_quality: '1',
-      });
-      return fetchJson(`https://api.bilibili.com${LEGACY_PLAYURL_PATH}?${params}`);
-    }
-
-    function pickPlayurlSource(playurlJson, preferBackup = false) {
-      const data = playurlJson?.data;
-      if (!data) return null;
-      if (Array.isArray(data.durl) && data.durl[0]?.url) {
-        const entry = data.durl[0];
-        let url = entry.url;
-        if (preferBackup && Array.isArray(entry.backup_url) && entry.backup_url[0]) {
-          url = entry.backup_url[0];
-        }
-        return {
-          type: 'mp4',
-          url,
-          durationMs: data.timelength || 0,
-          hasBackup: Array.isArray(entry.backup_url) && entry.backup_url.length > 0,
-        };
-      }
-      const video = data.dash?.video?.[0];
-      if (video?.baseUrl) {
-        return { type: 'dash', url: video.baseUrl, durationMs: (data.dash.duration || 0) * 1000 };
-      }
-      return null;
-    }
-
     function hideNativePlayerChildren(host, keep) {
       for (const child of host.children) {
         if (child === keep) continue;
@@ -656,11 +622,33 @@
 
     const pageLoc = parsePageLocation(location.href);
     const recovery = {
+      phase: 'idle', // 'idle' | 'probing' | 'recovery'
       armed: false,
       bvid: pageLoc.bvid,
       cid: null,
       toastShown: false,
     };
+    let viewProbeSettled = false;
+
+    function isRecoveryActive() {
+      return recovery.phase === 'recovery' && recovery.armed;
+    }
+
+    function setPhase(next) {
+      recovery.phase = next;
+      recovery.armed = next === 'recovery';
+    }
+
+    function shouldPassthroughViewApi() {
+      return recovery.phase === 'idle' && viewProbeSettled;
+    }
+
+    function settleViewProbe() {
+      viewProbeSettled = true;
+      if (recovery.phase === 'probing') {
+        setPhase('idle');
+      }
+    }
 
     function isViewUrl(url) {
       if (typeof url !== 'string') return false;
@@ -685,22 +673,19 @@
       }
     }
 
-    function isPlayurlUrl(url) {
-      return (
-        typeof url === 'string' &&
-        (url.includes(WBI_PLAYURL_PATH) || url.includes(LEGACY_PLAYURL_PATH))
-      );
-    }
-
     function isSsrNotFound(state) {
       const err = state?.error;
       return err && (err.trueCode === -404 || err.code === 404);
     }
 
-    function markRecovered(bvid, cid, pageIndex) {
-      recovery.armed = true;
+    function armRecovery(bvid, cid, pageIndex) {
+      if (recovery.phase === 'recovery') return;
+      setPhase('recovery');
       recovery.bvid = bvid;
       recovery.cid = cid;
+      scheduleEmbedPlayer(bvid, cid, pageIndex);
+      installNavigationGuard();
+      installRecommendNavFix();
       if (!recovery.toastShown) {
         recovery.toastShown = true;
         toast('AV Shell Playfix：已通过备用接口恢复视频信息');
@@ -708,7 +693,6 @@
           showEggPopup();
         }
       }
-      scheduleEmbedPlayer(bvid, cid, pageIndex);
     }
 
     function patchSsrState(state) {
@@ -741,7 +725,7 @@
         log('SSR related failed', err);
         state.related = state.related || [];
       }
-      markRecovered(bvid, payload.cid, pageIndex);
+      armRecovery(bvid, payload.cid, pageIndex);
       log('SSR patched', bvid, 'cid', payload.cid, 'related', state.related.length);
       return true;
     }
@@ -766,13 +750,13 @@
     function blockErrorRedirect(url) {
       const s = String(url);
       return (
-        recovery.armed &&
+        isRecoveryActive() &&
         (s.includes('errorpage') || (s === 'https://www.bilibili.com/' || s === 'https://www.bilibili.com'))
       );
     }
 
     function blockEmbedNavigate(url) {
-      if (!recovery.armed) return false;
+      if (!isRecoveryActive()) return false;
       try {
         const target = new URL(String(url), location.origin);
         if (!target.hostname.endsWith('bilibili.com')) return false;
@@ -789,53 +773,60 @@
       return blockErrorRedirect(url) || blockEmbedNavigate(url);
     }
 
-    const hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
-    const nativeHrefSet = hrefDesc?.set;
-    const nativeAssign =
-      typeof Location.prototype.assign === 'function'
-        ? Location.prototype.assign
-        : function fallbackAssign(url) {
-            if (nativeHrefSet) nativeHrefSet.call(this, String(url));
-          };
+    function installNavigationGuard() {
+      if (window.__avShellNavGuard) return;
+      window.__avShellNavGuard = true;
 
-    Location.prototype.assign = function (url) {
-      if (shouldBlockNavigation(url)) {
-        log('blocked assign redirect', url);
-        return;
+      const hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+      const nativeHrefSet = hrefDesc?.set;
+      const nativeAssign =
+        typeof Location.prototype.assign === 'function'
+          ? Location.prototype.assign
+          : function fallbackAssign(url) {
+              if (nativeHrefSet) nativeHrefSet.call(this, String(url));
+            };
+      const nativeReplace =
+        typeof Location.prototype.replace === 'function'
+          ? Location.prototype.replace
+          : function fallbackReplace(url) {
+              if (nativeHrefSet) nativeHrefSet.call(this, String(url));
+            };
+
+      Location.prototype.assign = function (url) {
+        if (shouldBlockNavigation(url)) {
+          log('blocked assign redirect', url);
+          return;
+        }
+        return nativeAssign.call(this, url);
+      };
+
+      Location.prototype.replace = function (url) {
+        if (shouldBlockNavigation(url)) {
+          log('blocked replace redirect', url);
+          return;
+        }
+        return nativeReplace.call(this, url);
+      };
+
+      if (hrefDesc?.set && hrefDesc?.get) {
+        Object.defineProperty(Location.prototype, 'href', {
+          configurable: true,
+          enumerable: hrefDesc.enumerable,
+          get: hrefDesc.get,
+          set(url) {
+            if (shouldBlockNavigation(url)) {
+              log('blocked href redirect', url);
+              return;
+            }
+            nativeHrefSet.call(this, url);
+          },
+        });
       }
-      return nativeAssign.call(this, url);
-    };
-
-    const nativeReplace =
-      typeof Location.prototype.replace === 'function'
-        ? Location.prototype.replace
-        : function fallbackReplace(url) {
-            if (nativeHrefSet) nativeHrefSet.call(this, String(url));
-          };
-    Location.prototype.replace = function (url) {
-      if (shouldBlockNavigation(url)) {
-        log('blocked replace redirect', url);
-        return;
-      }
-      return nativeReplace.call(this, url);
-    };
-
-    if (hrefDesc?.set && hrefDesc?.get) {
-      Object.defineProperty(Location.prototype, 'href', {
-        configurable: true,
-        enumerable: hrefDesc.enumerable,
-        get: hrefDesc.get,
-        set(url) {
-          if (shouldBlockNavigation(url)) {
-            log('blocked href redirect', url);
-            return;
-          }
-          nativeHrefSet.call(this, url);
-        },
-      });
     }
 
     function installRecommendNavFix() {
+      if (window.__avShellRecoNav) return;
+      window.__avShellRecoNav = true;
       const RECO_ZONE =
         '#recommend, #reco_wrap, .rec-list, .recommend-container, .recommend-list-v1, ' +
         '.right-container, .bili-player-ending-panel, [class*="ending-panel"], [class*="EndingPanel"]';
@@ -882,7 +873,12 @@
     async function maybeRecoverView(requestUrl) {
       const nativeJson = await fetchJson(requestUrl);
       if (nativeJson.code !== -404) {
+        settleViewProbe();
         return nativeJson;
+      }
+
+      if (recovery.phase === 'idle') {
+        setPhase('probing');
       }
 
       const bvid = resolveBvidFromUrl(requestUrl, pageLoc);
@@ -891,15 +887,22 @@
         return nativeJson;
       }
 
-      const [pages, desc] = await Promise.all([fetchPagelist(bvid), fetchDesc(bvid)]);
-      const synthetic = buildSyntheticView(bvid, pages, pageLoc.page, { desc });
-      markRecovered(bvid, synthetic.data.cid, pageLoc.page);
-      log('synthetic view for', bvid, 'cid', recovery.cid);
-      return synthetic;
+      try {
+        const [pages, desc] = await Promise.all([fetchPagelist(bvid), fetchDesc(bvid)]);
+        const synthetic = buildSyntheticView(bvid, pages, pageLoc.page, { desc });
+        armRecovery(bvid, synthetic.data.cid, pageLoc.page);
+        log('synthetic view for', bvid, 'cid', recovery.cid);
+        return synthetic;
+      } catch (err) {
+        setPhase('idle');
+        log('view recovery pagelist failed', err);
+        throw err;
+      }
     }
 
     async function maybeRecoverViewDetail(requestUrl, nativeJson) {
       if (nativeJson?.code === 0) {
+        settleViewProbe();
         return nativeJson;
       }
       if (nativeJson?.code !== -404 && nativeJson?.code !== 62002) {
@@ -912,53 +915,34 @@
         return nativeJson;
       }
 
-      const aid = bv2aid(bvid);
-      const [pages, related, tags, desc] = await Promise.all([
-        fetchPagelist(bvid),
-        fetchRelated(bvid, aid),
-        fetchTags(bvid),
-        fetchDesc(bvid),
-      ]);
-      const synthetic = buildSyntheticViewDetail(bvid, pages, pageLoc.page, related, tags, desc);
-      markRecovered(bvid, synthetic.data.View.cid, pageLoc.page);
-      log('synthetic view/detail for', bvid, 'related', related.length);
-      return synthetic;
-    }
-
-    async function maybeRecoverPlayurl(requestUrl, nativeJson) {
-      if (!recovery.armed) {
+      try {
+        const aid = bv2aid(bvid);
+        const [pages, related, tags, desc] = await Promise.all([
+          fetchPagelist(bvid),
+          fetchRelated(bvid, aid),
+          fetchTags(bvid),
+          fetchDesc(bvid),
+        ]);
+        const synthetic = buildSyntheticViewDetail(bvid, pages, pageLoc.page, related, tags, desc);
+        armRecovery(bvid, synthetic.data.View.cid, pageLoc.page);
+        log('synthetic view/detail for', bvid, 'related', related.length);
+        return synthetic;
+      } catch (err) {
+        if (recovery.phase === 'probing') {
+          setPhase('idle');
+        }
+        log('view/detail recovery failed', err);
         return nativeJson;
       }
-      if (nativeJson.code === 0) {
-        const src = pickPlayurlSource(nativeJson);
-        if (src && (src.durationMs > 60000 || nativeJson.data?.dash?.duration > 60)) {
-          return nativeJson;
-        }
-      }
-      let cid = recovery.cid;
-      if (!cid) {
-        try {
-          const u = new URL(requestUrl, location.origin);
-          cid = Number(u.searchParams.get('cid'));
-        } catch (_) {
-          /* ignore */
-        }
-      }
-      if (!cid || !recovery.bvid) {
-        return nativeJson;
-      }
-      const legacy = await fetchLegacyPlayurl(recovery.bvid, cid);
-      if (legacy.code === 0) {
-        return legacy;
-      }
-      toast(`AV Shell Playfix：播放地址获取失败 (${legacy.message || legacy.code})`);
-      return nativeJson;
     }
 
     window.fetch = async function avShellFetch(input, init) {
       const url = typeof input === 'string' ? input : input?.url;
       try {
         if (url && isViewUrl(url)) {
+          if (shouldPassthroughViewApi()) {
+            return nativeFetch(input, init);
+          }
           const patched = await maybeRecoverView(url);
           return new Response(JSON.stringify(patched), {
             status: 200,
@@ -966,6 +950,9 @@
           });
         }
         if (url && isViewDetailUrl(url)) {
+          if (shouldPassthroughViewApi()) {
+            return nativeFetch(input, init);
+          }
           let nativeJson;
           try {
             nativeJson = await fetchJson(url);
@@ -979,24 +966,8 @@
             headers: { 'Content-Type': 'application/json' },
           });
         }
-        const resp = await nativeFetch(input, init);
-        if (url && isPlayurlUrl(url) && recovery.armed) {
-          const text = await resp.clone().text();
-          let json;
-          try {
-            json = JSON.parse(text);
-          } catch {
-            return resp;
-          }
-          const fixed = await maybeRecoverPlayurl(url, json);
-          if (fixed !== json) {
-            return new Response(JSON.stringify(fixed), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            });
-          }
-        }
-        return resp;
+        // ponytail: idle phase — passthrough everything except view/viewdetail (handled above)
+        return nativeFetch(input, init);
       } catch (err) {
         log('fetch hook error', err);
         return nativeFetch(input, init);
@@ -1016,6 +987,9 @@
       const url = this.__avShellUrl || '';
 
       if (isViewUrl(url)) {
+        if (shouldPassthroughViewApi()) {
+          return nativeSend.apply(this, args);
+        }
         maybeRecoverView(url)
           .then((json) => {
             const body = JSON.stringify(json);
@@ -1034,6 +1008,9 @@
       }
 
       if (isViewDetailUrl(url)) {
+        if (shouldPassthroughViewApi()) {
+          return nativeSend.apply(this, args);
+        }
         fetchJson(url)
           .then((json) => maybeRecoverViewDetail(url, json))
           .then((json) => {
@@ -1052,33 +1029,8 @@
         return;
       }
 
-      if (isPlayurlUrl(url) && recovery.armed) {
-        const xhr = this;
-        const onReady = function () {
-          if (xhr.readyState !== 4) return;
-          xhr.removeEventListener('readystatechange', onReady);
-          try {
-            const json = JSON.parse(xhr.responseText);
-            maybeRecoverPlayurl(url, json).then((fixed) => {
-              if (fixed === json) return;
-              const body = JSON.stringify(fixed);
-              Object.defineProperty(xhr, 'responseText', { configurable: true, get: () => body });
-              Object.defineProperty(xhr, 'response', { configurable: true, get: () => body });
-              xhr.dispatchEvent(new Event('readystatechange'));
-              xhr.dispatchEvent(new Event('load'));
-            });
-          } catch (_) {
-            /* ignore */
-          }
-        };
-        xhr.addEventListener('readystatechange', onReady);
-      }
-
       return nativeSend.apply(this, args);
     };
-
-    installRecommendNavFix();
-    log('hooks installed for', location.href);
   }
 
   function injectIntoPage(source) {
