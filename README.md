@@ -25,14 +25,19 @@
 | API | 海外常见结果 |
 |-----|----------------|
 | `/x/web-interface/view` | `-404` |
+| `/x/web-interface/view/detail` | `-404`（脚本会合成 Related / Tags） |
+| `/x/web-interface/archive/related` | `0` |
 | `/x/player/pagelist` | `0` |
 | `/x/player/playurl`（UGC legacy） | `0` |
 
+> **播放量说明：** 版权壳视频在 `view -404` 时，B 站不提供该稿件自身的 stat 接口；脚本只能补标题、分 P、推荐列表等。右侧推荐视频里的播放量仍正常显示。
+
 ## 工作原理
 
-1. 拦截 SSR `__INITIAL_STATE__`，`error.trueCode === -404` 时用 pagelist 合成 `videoData`
-2. 阻止跳转首页错误页
-3. 用 legacy UGC `/x/player/playurl` 挂载 HTML5 `<video>` 播放正片
+1. 拦截 SSR `__INITIAL_STATE__`，`error.trueCode === -404` 时用 pagelist 合成 `videoData`，并预填 `related[]`
+2. 拦截 `view` / `view/detail`，`-404` 时用 pagelist + related + tags + desc 合成页面元数据
+3. 阻止跳转首页错误页
+4. 用 legacy UGC `/x/player/playurl` 挂载 HTML5 `<video>` 播放正片
 
 ## 安装
 

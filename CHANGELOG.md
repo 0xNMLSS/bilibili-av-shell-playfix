@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (experiment branch `experiment/native-player-modes`)
+
+- Player mode switch via `?avspf=direct|native|embed|native-reload` or `localStorage avShellPlayfix:playerMode`.
+- `native` — Bilibili bpx-player + playurl hook only (no HTML5 overlay).
+- `embed` — `player.bilibili.com` iframe overlay.
+- `native-reload` — reload/inject legacy mp4 into native `<video>` when duration &lt; 60s.
+- On-page experiment panel and `window.__avShellPlayfixExperiment` for mode switching.
+- See `EXPERIMENT.md` for test protocol.
+
+## [0.7.1] - 2026-07-03
+
+### Added
+
+- Recover sidebar **related videos** when `view/detail` / `wbi/view/detail` returns `-404`, by synthesizing from `archive/related`, `archive/desc`, and tag APIs.
+- SSR patch now preloads `related[]` from the same related API.
+
+### Changed
+
+- Synthetic `view` payload uses pagelist `ctime`, archive desc, and standard `stat.favorite` field names.
+
+### Note
+
+- **Play count / likes / coins** for the blocked video itself stay at `0`: Bilibili does not expose stat APIs when `view` is `-404`. Related videos in the sidebar still show their own stats.
+
 ## [0.7.0] - 2026-07-03
 
 ### Changed
