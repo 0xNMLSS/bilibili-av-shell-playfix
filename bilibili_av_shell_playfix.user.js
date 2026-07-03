@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.9.1
+// @version      0.9.3
 // @match        *://player.bilibili.com/player.html*
 // @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。\n\n测试：https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
@@ -628,7 +628,6 @@
       cid: null,
       toastShown: false,
     };
-    let viewProbeSettled = false;
 
     function isRecoveryActive() {
       return recovery.phase === 'recovery' && recovery.armed;
@@ -639,15 +638,8 @@
       recovery.armed = next === 'recovery';
     }
 
-    function shouldPassthroughViewApi() {
-      return recovery.phase === 'idle' && viewProbeSettled;
-    }
-
-    function settleViewProbe() {
-      viewProbeSettled = true;
-      if (recovery.phase === 'probing') {
-        setPhase('idle');
-      }
+    function shouldInterceptViewApi() {
+      return isRecoveryActive();
     }
 
     function isViewUrl(url) {
@@ -873,7 +865,6 @@
     async function maybeRecoverView(requestUrl) {
       const nativeJson = await fetchJson(requestUrl);
       if (nativeJson.code !== -404) {
-        settleViewProbe();
         return nativeJson;
       }
 
@@ -902,7 +893,6 @@
 
     async function maybeRecoverViewDetail(requestUrl, nativeJson) {
       if (nativeJson?.code === 0) {
-        settleViewProbe();
         return nativeJson;
       }
       if (nativeJson?.code !== -404 && nativeJson?.code !== 62002) {
@@ -939,20 +929,14 @@
     window.fetch = async function avShellFetch(input, init) {
       const url = typeof input === 'string' ? input : input?.url;
       try {
-        if (url && isViewUrl(url)) {
-          if (shouldPassthroughViewApi()) {
-            return nativeFetch(input, init);
-          }
+        if (url && shouldInterceptViewApi() && isViewUrl(url)) {
           const patched = await maybeRecoverView(url);
           return new Response(JSON.stringify(patched), {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           });
         }
-        if (url && isViewDetailUrl(url)) {
-          if (shouldPassthroughViewApi()) {
-            return nativeFetch(input, init);
-          }
+        if (url && shouldInterceptViewApi() && isViewDetailUrl(url)) {
           let nativeJson;
           try {
             nativeJson = await fetchJson(url);
@@ -966,7 +950,6 @@
             headers: { 'Content-Type': 'application/json' },
           });
         }
-        // ponytail: idle phase — passthrough everything except view/viewdetail (handled above)
         return nativeFetch(input, init);
       } catch (err) {
         log('fetch hook error', err);
@@ -986,10 +969,7 @@
     XHR.prototype.send = function (...args) {
       const url = this.__avShellUrl || '';
 
-      if (isViewUrl(url)) {
-        if (shouldPassthroughViewApi()) {
-          return nativeSend.apply(this, args);
-        }
+      if (shouldInterceptViewApi() && isViewUrl(url)) {
         maybeRecoverView(url)
           .then((json) => {
             const body = JSON.stringify(json);
@@ -1007,10 +987,7 @@
         return;
       }
 
-      if (isViewDetailUrl(url)) {
-        if (shouldPassthroughViewApi()) {
-          return nativeSend.apply(this, args);
-        }
+      if (shouldInterceptViewApi() && isViewDetailUrl(url)) {
         fetchJson(url)
           .then((json) => maybeRecoverViewDetail(url, json))
           .then((json) => {
@@ -1031,6 +1008,19 @@
 
       return nativeSend.apply(this, args);
     };
+
+    async function probePageViewIfNeeded() {
+      const bvid = pageLoc.bvid;
+      if (!bvid || isRecoveryActive()) return;
+      const viewUrl = `https://api.bilibili.com${VIEW_PATH}?bvid=${encodeURIComponent(bvid)}`;
+      try {
+        await maybeRecoverView(viewUrl);
+      } catch (err) {
+        log('startup view probe failed', err);
+      }
+    }
+
+    void probePageViewIfNeeded();
   }
 
   function injectIntoPage(source) {

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-07-03
+
+### Fixed
+
+- Idle/normal pages never hijack view/viewdetail XHR — intercept only in `recovery` phase; SPA title/comments stay native after leaving a view404 page.
+
+## [0.9.2] - 2026-07-03
+
+### Fixed
+
+- SPA recommend after leaving a view404 page: passthrough native view APIs per BV (fixes stale probe + in-flight response race on 2nd recommend hop).
+
 ## [0.9.1] - 2026-07-03
 
 ### Fixed
