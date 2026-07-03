@@ -37,7 +37,7 @@
 1. 拦截 SSR `__INITIAL_STATE__`，`error.trueCode === -404` 时用 pagelist 合成 `videoData`，并预填 `related[]`
 2. 拦截 `view` / `view/detail`，`-404` 时用 pagelist + related + tags + desc 合成页面元数据
 3. 阻止跳转首页错误页
-4. 用 legacy UGC `/x/player/playurl` 挂载 HTML5 `<video>` 播放正片
+4. 挂载 `player.bilibili.com` embed 播放器（完整 B 站 UI + 弹幕）；iframe 内修复单击暂停/双击全屏
 
 ## 安装
 

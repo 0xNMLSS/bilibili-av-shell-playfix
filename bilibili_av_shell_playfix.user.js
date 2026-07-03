@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.8.0-experiment
-// @description  [实验分支] 播放器模式：?avspf=direct|native|embed|native-reload
-// @description  仅 /video/BV* · 不解番剧。见 EXPERIMENT.md。
-// @description  测试：https://www.bilibili.com/video/BV1GJ411x7h7/?avspf=native
+// @version      0.8.0
+// @match        *://player.bilibili.com/player.html*
+// @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。
+// @description  测试：https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
 // @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
 // @downloadURL  https://update.greasyfork.org/scripts/585302/%E8%A7%A3%E9%99%A4b%E7%AB%99%E7%89%88%E6%9D%83bv%E8%A7%86%E9%A2%91404%E6%92%AD%E6%94%BE%E9%99%90%E5%88%B6.user.js
@@ -23,6 +23,150 @@
 (function () {
   'use strict';
 
+  /** Runs inside player.bilibili.com iframe — must not close over userscript scope. */
+  function installEmbedIframeHooks() {
+    if (window.top === window) return;
+    if (location.hostname !== 'player.bilibili.com') return;
+    if (!/\/player\.html/i.test(location.pathname)) return;
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('avShellEmbed') !== '1') return;
+
+    const CONTROL_BAR_PX = 52;
+
+    function findPlayerRoot() {
+      return (
+        document.querySelector('.bpx-player-container') ||
+        document.querySelector('#bilibili-player') ||
+        document.querySelector('#player') ||
+        document.querySelector('.player')
+      );
+    }
+
+    function findVideo(root) {
+      return root?.querySelector('video') || document.querySelector('video');
+    }
+
+    function isControlBarClick(target, root) {
+      if (!(target instanceof Element)) return false;
+      if (target.closest('.bpx-player-control-entity, .bpx-player-control-bottom, .bpx-player-sending-bar')) {
+        return true;
+      }
+      const rect = root.getBoundingClientRect();
+      const y = target.getBoundingClientRect().top;
+      return y >= rect.bottom - CONTROL_BAR_PX;
+    }
+
+    function hideOutsideOverlay() {
+      const style = document.createElement('style');
+      style.textContent =
+        '.bpx-player-is-outside-backdrop,[class*="outside-jump"],[class*="OutsideJump"],' +
+        '.bpx-player-inactive-mask a[href*="/video/"]{pointer-events:none!important}';
+      (document.head || document.documentElement).appendChild(style);
+    }
+
+    function blockVideoPageLinks() {
+      document.addEventListener(
+        'click',
+        (e) => {
+          const link = e.target.closest?.('a[href*="/video/"], [data-href*="/video/"]');
+          if (!link) return;
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+        },
+        true,
+      );
+    }
+
+    function isNativeUiClick(target) {
+      if (!(target instanceof Element)) return false;
+      return Boolean(
+        target.closest(
+          '.bpx-player-ctrl-fullscreen, .bpx-player-ctrl-web-fullscreen, .bpx-player-ctrl-volume,' +
+            '.bpx-player-ctrl-quality, .bpx-player-ctrl-playbackrate, .bpx-player-ctrl-dm,' +
+            '[class*="fullscreen"], [class*="Fullscreen"]',
+        ),
+      );
+    }
+
+    function bindBodyToggle() {
+      const root = findPlayerRoot();
+      const video = findVideo(root);
+      if (!root || !video || root.dataset.avShellEmbedBound === '1') return false;
+      root.dataset.avShellEmbedBound = '1';
+
+      let singleClickTimer = 0;
+
+      const togglePlayPause = () => {
+        const v = findVideo(root);
+        if (!v) return;
+        if (v.paused) {
+          void v.play();
+        } else {
+          v.pause();
+        }
+      };
+
+      document.addEventListener(
+        'dblclick',
+        (e) => {
+          if (!(e.target instanceof Element)) return;
+          if (!root.isConnected || !root.contains(e.target)) return;
+          if (singleClickTimer) {
+            clearTimeout(singleClickTimer);
+            singleClickTimer = 0;
+          }
+          // ponytail: let bpx-player handle dblclick fullscreen; do not stopPropagation
+        },
+        true,
+      );
+
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (!(e.target instanceof Element)) return;
+          if (!root.isConnected) return;
+          if (!root.contains(e.target)) return;
+          if (isControlBarClick(e.target, root)) return;
+          if (isNativeUiClick(e.target)) return;
+
+          // Second click of a double-click: cancel pending single-click toggle
+          if (e.detail > 1) {
+            if (singleClickTimer) {
+              clearTimeout(singleClickTimer);
+              singleClickTimer = 0;
+            }
+            return;
+          }
+
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+
+          if (singleClickTimer) clearTimeout(singleClickTimer);
+          singleClickTimer = setTimeout(() => {
+            singleClickTimer = 0;
+            togglePlayPause();
+          }, 280);
+        },
+        true,
+      );
+
+      return true;
+    }
+
+    hideOutsideOverlay();
+    blockVideoPageLinks();
+
+    const start = Date.now();
+    const timer = setInterval(() => {
+      if (bindBodyToggle() || Date.now() - start > 60000) {
+        clearInterval(timer);
+      }
+    }, 400);
+  }
+
   /** Self-contained page hook — must not close over userscript scope (GM4 inject). */
   function installPageHooks() {
     if (window.top !== window) return;
@@ -39,39 +183,6 @@
     const PAGELIST_PATH = '/x/player/pagelist';
     const LEGACY_PLAYURL_PATH = '/x/player/playurl';
     const WBI_PLAYURL_PATH = '/x/player/wbi/playurl';
-    const PLAYER_MODES = Object.freeze(['direct', 'native', 'embed', 'native-reload']);
-    const MODE_STORAGE_KEY = 'avShellPlayfix:playerMode';
-
-    function resolvePlayerMode() {
-      try {
-        const fromUrl = new URL(location.href).searchParams.get('avspf');
-        if (fromUrl && PLAYER_MODES.includes(fromUrl)) {
-          return fromUrl;
-        }
-      } catch (_) {
-        /* ignore */
-      }
-      try {
-        const fromStorage = localStorage.getItem(MODE_STORAGE_KEY);
-        if (fromStorage && PLAYER_MODES.includes(fromStorage)) {
-          return fromStorage;
-        }
-      } catch (_) {
-        /* ignore */
-      }
-      return 'direct';
-    }
-
-    const playerMode = resolvePlayerMode();
-    const experiment = {
-      playurlRequests: 0,
-      playurlLegacy: 0,
-      nativeDuration: null,
-      nativeVideoFound: false,
-      embedLoaded: false,
-      reloadAttempts: 0,
-      panelEl: null,
-    };
 
     function log(...args) {
       console.log(TAG, ...args);
@@ -280,7 +391,8 @@
         cid: current.cid,
         videos: pages.length,
         title: current.part || '视频',
-        pic: (current.first_frame || '').replace(/^http:/, 'https:'),
+        pic: (current.first_frame || mappedPages[0]?.first_frame || '')
+          .replace(/^http:/, 'https:') || 'https://i0.hdslb.com/bfs/static/jinkela/long/images/empty.png',
         duration: current.duration,
         dimension: current.dimension,
         desc,
@@ -291,7 +403,11 @@
         ctime: now,
         tname: '',
         pages: mappedPages,
-        owner: { mid: 1, name: '哔哩哔哩', face: '' },
+        owner: {
+          mid: 1,
+          name: '哔哩哔哩',
+          face: 'https://i0.hdslb.com/bfs/face/mofang.jpg',
+        },
         rights: {
           bp: 0,
           elec: 0,
@@ -367,27 +483,7 @@
       };
     }
 
-    function fetchLegacyPlayurlSync(bvid, cid) {
-      const params = new URLSearchParams({
-        bvid,
-        cid: String(cid),
-        qn: '80',
-        fnval: '0',
-        fnver: '0',
-        platform: 'pc',
-        high_quality: '1',
-      });
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', `https://api.bilibili.com${LEGACY_PLAYURL_PATH}?${params}`, false);
-      xhr.withCredentials = true;
-      xhr.send();
-      if (xhr.status !== 200) {
-        throw new Error(`playurl http ${xhr.status}`);
-      }
-      return JSON.parse(xhr.responseText);
-    }
-
-    async function fetchLegacyPlayurl(bvid, cid) {
+    function fetchLegacyPlayurl(bvid, cid) {
       const params = new URLSearchParams({
         bvid,
         cid: String(cid),
@@ -432,138 +528,18 @@
       }
     }
 
-    function restoreNativePlayerDom(host) {
-      if (!host) return;
-      for (const child of host.children) {
-        if (child.dataset.avShellPlayfixHidden !== '1') continue;
-        delete child.dataset.avShellPlayfixHidden;
-        child.style.visibility = '';
-        child.style.pointerEvents = '';
-      }
-      host.querySelector('#av-shell-playfix-root')?.remove();
-    }
-
-    function findNativeVideo() {
-      const host = findPlayerHost();
-      if (!host) return null;
-      for (const video of host.querySelectorAll('video')) {
-        if (video.dataset.avShellPlayfix === 'video') continue;
-        if (video.closest('#av-shell-playfix-root')) continue;
-        return video;
-      }
-      return null;
-    }
-
-    function updateExperimentPanel() {
-      if (playerMode === 'direct') return;
-      const show = () => {
-        let panel = experiment.panelEl;
-        if (!panel?.isConnected) {
-          panel = document.createElement('div');
-          panel.id = 'av-shell-playfix-experiment';
-          panel.style.cssText =
-            'position:fixed;bottom:12px;left:12px;z-index:999998;max-width:360px;' +
-            'background:rgba(0,0,0,.82);color:#9cf;padding:8px 10px;border-radius:6px;' +
-            'font:12px/1.45 monospace;pointer-events:none;white-space:pre-wrap';
-          (document.body || document.documentElement).appendChild(panel);
-          experiment.panelEl = panel;
-        }
-        const dur = experiment.nativeDuration;
-        const durText =
-          dur == null || Number.isNaN(dur) ? 'n/a' : `${Math.round(dur)}s${dur > 0 && dur < 60 ? ' ⚠ placeholder?' : ''}`;
-        panel.textContent =
-          `[AV Shell Playfix experiment]\n` +
-          `mode: ${playerMode}\n` +
-          `playurl hooks: ${experiment.playurlRequests} (legacy ${experiment.playurlLegacy})\n` +
-          `native video: ${experiment.nativeVideoFound ? 'yes' : 'no'} duration=${durText}\n` +
-          `embed loaded: ${experiment.embedLoaded ? 'yes' : 'no'}\n` +
-          `reload attempts: ${experiment.reloadAttempts}\n` +
-          `switch: ?avspf=${PLAYER_MODES.filter((m) => m !== playerMode).join('|')}`;
-      };
-      if (document.body) show();
-      else document.addEventListener('DOMContentLoaded', show, { once: true });
-    }
-
-    function tryPlayerApiReload(bvid, cid) {
-      const aid = bv2aid(bvid);
-      const apis = [window.player, window.__player__].filter(Boolean);
-      for (const api of apis) {
-        if (typeof api.reload === 'function') {
-          try {
-            api.reload();
-            log('native-reload: player.reload()');
-          } catch (err) {
-            log('native-reload: player.reload() failed', err);
-          }
-        }
-        if (typeof api.switchVideo === 'function') {
-          try {
-            api.switchVideo({ bvid, cid, aid });
-            log('native-reload: player.switchVideo()');
-          } catch (err) {
-            log('native-reload: player.switchVideo() failed', err);
-          }
-        }
-      }
-    }
-
-    async function injectLegacyIntoNativeVideo(bvid, cid, reason) {
-      const video = findNativeVideo();
-      if (!video) {
-        log('native-reload: no native video to inject', reason);
-        return false;
-      }
-      try {
-        const playurlJson = await fetchLegacyPlayurl(bvid, cid);
-        if (playurlJson.code !== 0) {
-          throw new Error(playurlJson.message || String(playurlJson.code));
-        }
-        const source = pickPlayurlSource(playurlJson, false);
-        if (!source) throw new Error('no source');
-        video.src = source.url.replace(/^http:/, 'https:');
-        video.load();
-        experiment.reloadAttempts++;
-        log('native-reload: injected legacy src', reason, source.type);
-        updateExperimentPanel();
-        return true;
-      } catch (err) {
-        log('native-reload: inject failed', reason, err);
-        return false;
-      }
-    }
-
-    function startNativeWatch(bvid, cid, withReload) {
-      const host = findPlayerHost();
-      if (host) restoreNativePlayerDom(host);
-
-      let reloadDone = false;
-      const inspect = () => {
-        const video = findNativeVideo();
-        if (video) {
-          experiment.nativeVideoFound = true;
-          if (video.duration && !Number.isNaN(video.duration)) {
-            experiment.nativeDuration = video.duration;
-          }
-          updateExperimentPanel();
-          if (
-            withReload &&
-            !reloadDone &&
-            video.duration > 0 &&
-            video.duration < 60
-          ) {
-            reloadDone = true;
-            tryPlayerApiReload(bvid, cid);
-            injectLegacyIntoNativeVideo(bvid, cid, 'short-duration');
-          }
-        }
-      };
-
-      inspect();
-      const timer = setInterval(() => {
-        inspect();
-      }, 1000);
-      setTimeout(() => clearInterval(timer), 120000);
-      updateExperimentPanel();
+    function buildEmbedPlayerUrl(bvid, cid, pageIndex) {
+      const page = pageIndex || pageLoc.page;
+      const params = new URLSearchParams({
+        aid: String(bv2aid(bvid)),
+        bvid,
+        cid: String(cid),
+        page: String(page),
+        high_quality: '1',
+        danmaku: '1',
+        avShellEmbed: '1',
+      });
+      return `https://player.bilibili.com/player.html?${params}`;
     }
 
     function mountEmbedPlayer(bvid, cid, pageIndex) {
@@ -594,21 +570,13 @@
           iframe.allow = 'autoplay; fullscreen';
           iframe.referrerPolicy = 'origin';
           iframe.style.cssText = 'width:100%;height:100%;min-height:480px;border:0;display:block';
-          iframe.addEventListener('load', () => {
-            experiment.embedLoaded = true;
-            updateExperimentPanel();
-            log('embed iframe loaded');
-          });
           root.appendChild(iframe);
         }
 
-        const page = pageIndex || pageLoc.page;
-        const aid = bv2aid(bvid);
-        iframe.src =
-          `https://player.bilibili.com/player.html?isOutside=true&aid=${aid}` +
-          `&bvid=${encodeURIComponent(bvid)}&cid=${cid}&page=${page}&high_quality=1&danmaku=1`;
-        log('embed player mounted', bvid, 'cid', cid, 'page', page);
-        updateExperimentPanel();
+        const embedUrl = buildEmbedPlayerUrl(bvid, cid, pageIndex);
+        if (iframe.src !== embedUrl) {
+          iframe.src = embedUrl;
+        }
         return true;
       };
 
@@ -620,147 +588,13 @@
       setTimeout(() => observer.disconnect(), 60000);
     }
 
-    function scheduleWhenDomReady(fn) {
+    function scheduleEmbedPlayer(bvid, cid, pageIndex) {
+      const run = () => mountEmbedPlayer(bvid, cid, pageIndex);
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', fn, { once: true });
+        document.addEventListener('DOMContentLoaded', run, { once: true });
       } else {
-        fn();
+        run();
       }
-    }
-
-    function schedulePlayerMount(bvid, cid, pageIndex) {
-      switch (playerMode) {
-        case 'native':
-          scheduleWhenDomReady(() => startNativeWatch(bvid, cid, false));
-          break;
-        case 'native-reload':
-          scheduleWhenDomReady(() => startNativeWatch(bvid, cid, true));
-          break;
-        case 'embed':
-          scheduleWhenDomReady(() => mountEmbedPlayer(bvid, cid, pageIndex));
-          break;
-        default:
-          scheduleDirectPlayer(bvid, cid);
-      }
-    }
-
-    function attachStreamRecovery(video, bvid, cid, playerRef) {
-      let recovering = false;
-      let recoverTimer = 0;
-
-      const reloadSource = async (reason) => {
-        if (recovering || playerRef.userPaused) return;
-        recovering = true;
-        const savedTime = video.currentTime;
-        const wasPlaying = !video.paused;
-        playerRef.useBackup = !playerRef.useBackup;
-        log('stream recover', reason, 'backup=', playerRef.useBackup);
-        try {
-          const playurlJson = await fetchLegacyPlayurl(bvid, cid);
-          if (playurlJson.code !== 0) throw new Error(playurlJson.message || String(playurlJson.code));
-          const source = pickPlayurlSource(playurlJson, playerRef.useBackup);
-          if (!source) throw new Error('no source');
-          video.src = source.url.replace(/^http:/, 'https:');
-          video.load();
-          await new Promise((resolve, reject) => {
-            const onReady = () => {
-              video.removeEventListener('loadedmetadata', onReady);
-              video.removeEventListener('error', onErr);
-              resolve();
-            };
-            const onErr = () => {
-              video.removeEventListener('loadedmetadata', onReady);
-              video.removeEventListener('error', onErr);
-              reject(new Error('reload metadata failed'));
-            };
-            video.addEventListener('loadedmetadata', onReady);
-            video.addEventListener('error', onErr);
-          });
-          if (savedTime > 0 && savedTime < video.duration) {
-            video.currentTime = savedTime;
-          }
-          if (wasPlaying) {
-            await video.play();
-          }
-        } catch (err) {
-          log('stream recover failed', err);
-        } finally {
-          recovering = false;
-        }
-      };
-
-      const scheduleRecover = (reason) => {
-        if (playerRef.userPaused) return;
-        if (recoverTimer) clearTimeout(recoverTimer);
-        recoverTimer = setTimeout(() => reloadSource(reason), 400);
-      };
-
-      let lastGesture = 0;
-      const markGesture = () => {
-        lastGesture = Date.now();
-      };
-      video.addEventListener('pointerdown', markGesture, true);
-      video.addEventListener('keydown', markGesture, true);
-
-      video.addEventListener('error', () => scheduleRecover('error'));
-      video.addEventListener('stalled', () => scheduleRecover('stalled'));
-      video.addEventListener('waiting', () => {
-        if (playerRef.userPaused) return;
-        if (video.readyState < HTMLMediaElement.HAVE_FUTURE_DATA) {
-          scheduleRecover('waiting');
-        }
-      });
-      video.addEventListener('pause', () => {
-        if (video.ended || recovering) return;
-        // Native controls pause via UA shadow DOM — no JS pause() call, only this event.
-        if (playerRef.userPaused || Date.now() - lastGesture < 800) {
-          playerRef.userPaused = true;
-        }
-      });
-      video.addEventListener('play', () => {
-        playerRef.userPaused = false;
-      });
-      const origPause = video.pause.bind(video);
-      video.pause = function () {
-        // ponytail: stalls fire 'pause' without calling pause(); only JS pause() is user intent
-        playerRef.userPaused = true;
-        return origPause();
-      };
-    }
-
-    function ensurePlayerRoot(host) {
-      let root = host.querySelector('#av-shell-playfix-root');
-      if (root) return root;
-      root = document.createElement('div');
-      root.id = 'av-shell-playfix-root';
-      root.dataset.avShellPlayfix = 'root';
-      root.style.cssText =
-        'position:absolute;inset:0;z-index:5;width:100%;height:100%;min-height:480px;background:#000';
-      host.style.position = 'relative';
-      host.appendChild(root);
-      hideNativePlayerChildren(host, root);
-      return root;
-    }
-
-    function startHostGuard(bvid, cid, playerRef) {
-      if (playerMode !== 'direct') return;
-      if (playerRef.guard) return;
-      playerRef.guard = new MutationObserver(() => {
-        const host = findPlayerHost();
-        const root = document.querySelector('#av-shell-playfix-root');
-        const video = playerRef.video;
-        if (!recovery.armed) return;
-        if (!host || !root?.isConnected || !video?.isConnected) {
-          log('player host lost, remounting');
-          playerRef.guard.disconnect();
-          playerRef.guard = null;
-          playerRef.video = null;
-          mountDirectPlayer(bvid, cid);
-          return;
-        }
-        hideNativePlayerChildren(host, root);
-      });
-      playerRef.guard.observe(document.documentElement, { childList: true, subtree: true });
     }
 
     function findPlayerHost() {
@@ -778,108 +612,7 @@
       bvid: pageLoc.bvid,
       cid: null,
       toastShown: false,
-      player: null,
     };
-
-    function mountDirectPlayer(bvid, cid) {
-      if (playerMode !== 'direct') return;
-      const mount = () => {
-        const host = findPlayerHost();
-        if (!host) return false;
-
-        const existingRoot = host.querySelector('#av-shell-playfix-root');
-        const existingVideo = recovery.player?.video;
-        if (existingRoot?.isConnected && existingVideo?.isConnected) {
-          hideNativePlayerChildren(host, existingRoot);
-          return true;
-        }
-
-        let playurlJson;
-        try {
-          playurlJson = fetchLegacyPlayurlSync(bvid, cid);
-        } catch (err) {
-          log('legacy playurl sync failed', err);
-          return false;
-        }
-        if (playurlJson.code !== 0) {
-          log('legacy playurl code', playurlJson.code, playurlJson.message);
-          return false;
-        }
-
-        const source = pickPlayurlSource(playurlJson, false);
-        if (!source) {
-          log('no playable source in legacy playurl');
-          return false;
-        }
-
-        host.style.minHeight = '480px';
-        host.style.width = '100%';
-        host.style.background = '#000';
-
-        const root = ensurePlayerRoot(host);
-        let shadow = root.shadowRoot;
-        if (!shadow) {
-          shadow = root.attachShadow({ mode: 'closed' });
-        }
-
-        let video = shadow.querySelector('video');
-        if (!video) {
-          video = document.createElement('video');
-          video.dataset.avShellPlayfix = 'video';
-          video.controls = true;
-          video.playsInline = true;
-          video.preload = 'auto';
-          video.style.cssText =
-            'width:100%;height:100%;min-height:480px;background:#000;display:block';
-          shadow.appendChild(video);
-        }
-
-        const playerRef = {
-          video,
-          useBackup: false,
-          userPaused: false,
-          guard: recovery.player?.guard || null,
-        };
-        if (!video.dataset.avShellPlayfixBound) {
-          video.dataset.avShellPlayfixBound = '1';
-          attachStreamRecovery(video, bvid, cid, playerRef);
-        }
-
-        video.src = source.url.replace(/^http:/, 'https:');
-        recovery.player = playerRef;
-
-        video.addEventListener(
-          'loadedmetadata',
-          () => {
-            log('direct player ready', 'duration', video.duration, 'type', source.type);
-            if (video.duration > 0 && video.duration < 60) {
-              log('warn: suspicious short duration', video.duration);
-            }
-          },
-          { once: true },
-        );
-
-        startHostGuard(bvid, cid, playerRef);
-        log('direct player mounted', bvid, 'cid', cid, source.type, 'shadow');
-        return true;
-      };
-
-      if (mount()) return;
-      const observer = new MutationObserver(() => {
-        if (mount()) observer.disconnect();
-      });
-      observer.observe(document.documentElement, { childList: true, subtree: true });
-      setTimeout(() => observer.disconnect(), 60000);
-    }
-
-    function scheduleDirectPlayer(bvid, cid) {
-      const run = () => mountDirectPlayer(bvid, cid);
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', run, { once: true });
-      } else {
-        run();
-      }
-    }
 
     function isViewUrl(url) {
       if (typeof url !== 'string') return false;
@@ -922,13 +655,12 @@
       recovery.cid = cid;
       if (!recovery.toastShown) {
         recovery.toastShown = true;
-        const modeHint = playerMode === 'direct' ? '' : ` [${playerMode}]`;
-        toast(`AV Shell Playfix${modeHint}：已通过备用接口恢复视频信息`);
+        toast('AV Shell Playfix：已通过备用接口恢复视频信息');
         if (bvid === EASTER_EGG_BVID) {
           showEggPopup();
         }
       }
-      schedulePlayerMount(bvid, cid, pageIndex);
+      scheduleEmbedPlayer(bvid, cid, pageIndex);
     }
 
     function patchSsrState(state) {
@@ -991,9 +723,27 @@
       );
     }
 
+    function blockEmbedNavigate(url) {
+      if (!recovery.armed) return false;
+      try {
+        const target = new URL(String(url), location.origin);
+        if (!target.hostname.endsWith('bilibili.com')) return false;
+        const match = target.pathname.match(/\/video\/(BV[\w]+)/i);
+        if (!match) return false;
+        const current = (recovery.bvid || pageLoc.bvid || '').toUpperCase();
+        return Boolean(current && match[1].toUpperCase() === current);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function shouldBlockNavigation(url) {
+      return blockErrorRedirect(url) || blockEmbedNavigate(url);
+    }
+
     const nativeAssign = Location.prototype.assign;
     Location.prototype.assign = function (url) {
-      if (blockErrorRedirect(url)) {
+      if (shouldBlockNavigation(url)) {
         log('blocked assign redirect', url);
         return;
       }
@@ -1002,7 +752,7 @@
 
     const nativeReplace = Location.prototype.replace;
     Location.prototype.replace = function (url) {
-      if (blockErrorRedirect(url)) {
+      if (shouldBlockNavigation(url)) {
         log('blocked replace redirect', url);
         return;
       }
@@ -1017,7 +767,7 @@
         enumerable: hrefDesc.enumerable,
         get: hrefDesc.get,
         set(url) {
-          if (blockErrorRedirect(url)) {
+          if (shouldBlockNavigation(url)) {
             log('blocked href redirect', url);
             return;
           }
@@ -1076,14 +826,11 @@
       if (!recovery.armed) {
         return nativeJson;
       }
-      experiment.playurlRequests++;
-      updateExperimentPanel();
       if (nativeJson.code === 0) {
         const src = pickPlayurlSource(nativeJson);
         if (src && (src.durationMs > 60000 || nativeJson.data?.dash?.duration > 60)) {
           return nativeJson;
         }
-        log('playurl ok but looks like placeholder, trying legacy UGC');
       }
       let cid = recovery.cid;
       if (!cid) {
@@ -1097,12 +844,8 @@
       if (!cid || !recovery.bvid) {
         return nativeJson;
       }
-      log('playurl failed, trying legacy UGC', nativeJson.code, nativeJson.message);
       const legacy = await fetchLegacyPlayurl(recovery.bvid, cid);
       if (legacy.code === 0) {
-        experiment.playurlLegacy++;
-        updateExperimentPanel();
-        log('legacy playurl ok');
         return legacy;
       }
       toast(`AV Shell Playfix：播放地址获取失败 (${legacy.message || legacy.code})`);
@@ -1231,27 +974,7 @@
       return nativeSend.apply(this, args);
     };
 
-    window.__avShellPlayfixExperiment = {
-      mode: playerMode,
-      modes: PLAYER_MODES,
-      stats: () => ({ ...experiment }),
-      setMode(next) {
-        if (!PLAYER_MODES.includes(next)) {
-          throw new Error(`unknown mode: ${next}; use one of ${PLAYER_MODES.join(', ')}`);
-        }
-        try {
-          localStorage.setItem(MODE_STORAGE_KEY, next);
-        } catch (_) {
-          /* ignore */
-        }
-        const url = new URL(location.href);
-        url.searchParams.set('avspf', next);
-        location.assign(url.toString());
-      },
-    };
-
-    log('hooks installed for', location.href, 'playerMode=', playerMode);
-    updateExperimentPanel();
+    log('hooks installed for', location.href);
   }
 
   function injectIntoPage(source) {
@@ -1261,10 +984,14 @@
     script.remove();
   }
 
-  const desc = Object.getOwnPropertyDescriptor(window, 'XMLHttpRequest');
-  if (desc && desc.writable === false) {
-    injectIntoPage(installPageHooks.toString());
-  } else {
-    installPageHooks();
+  if (window.top !== window && location.hostname === 'player.bilibili.com') {
+    injectIntoPage(installEmbedIframeHooks.toString());
+  } else if (window.top === window) {
+    const desc = Object.getOwnPropertyDescriptor(window, 'XMLHttpRequest');
+    if (desc && desc.writable === false) {
+      injectIntoPage(installPageHooks.toString());
+    } else {
+      installPageHooks();
+    }
   }
 })();

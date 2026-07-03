@@ -6,14 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added (experiment branch `experiment/native-player-modes`)
+## [0.8.0] - 2026-07-03
 
-- Player mode switch via `?avspf=direct|native|embed|native-reload` or `localStorage avShellPlayfix:playerMode`.
-- `native` — Bilibili bpx-player + playurl hook only (no HTML5 overlay).
-- `embed` — `player.bilibili.com` iframe overlay.
-- `native-reload` — reload/inject legacy mp4 into native `<video>` when duration &lt; 60s.
-- On-page experiment panel and `window.__avShellPlayfixExperiment` for mode switching.
-- See `EXPERIMENT.md` for test protocol.
+### Changed
+
+- Default playback uses Bilibili **embed iframe** (`player.bilibili.com`) with danmaku and native player controls, replacing Shadow DOM HTML5 `<video>`.
+- In-iframe hooks (`avShellEmbed=1`): single-click pause/play, double-click fullscreen, block external jump links.
+- Synthetic view uses pagelist cover and default avatar URL to avoid `broken-image.png` 404.
+
+### Removed
+
+- Experiment modes (`?avspf=`, `avEmbed=`, direct/native/native-reload), debug panel, and `__avShellPlayfixExperiment` API.
+- `EXPERIMENT.md` (superseded by this release).
 
 ## [0.7.1] - 2026-07-03
 
