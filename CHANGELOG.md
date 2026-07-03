@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-07-03
+
+### Fixed
+
+- Embed iframe: restore native double-click fullscreen (same as the control-bar fullscreen button); 0.8.2 wrongly triggered web-fullscreen instead.
+
 ## [0.8.2] - 2026-07-03
 
 ### Fixed

@@ -1,10 +1,9 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.8.2
+// @version      0.8.3
 // @match        *://player.bilibili.com/player.html*
-// @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。
-// @description  测试：https://www.bilibili.com/video/BV1GJ411x7h7/
+// @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。\n\n测试：https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
 // @supportURL   https://github.com/0xNMLSS/bilibili-av-shell-playfix
 // @downloadURL  https://update.greasyfork.org/scripts/585302/%E8%A7%A3%E9%99%A4b%E7%AB%99%E7%89%88%E6%9D%83bv%E8%A7%86%E9%A2%91404%E6%92%AD%E6%94%BE%E9%99%90%E5%88%B6.user.js
@@ -117,22 +116,6 @@
       e.stopImmediatePropagation();
     }
 
-    function toggleWebFullscreen(root) {
-      const btn =
-        root.querySelector('.bpx-player-ctrl-web-fullscreen') ||
-        root.querySelector('.bpx-player-ctrl-fullscreen');
-      if (btn instanceof HTMLElement) {
-        btn.click();
-        return;
-      }
-      const wrap = root.querySelector('.bpx-player-video-wrap') || root;
-      if (document.fullscreenElement) {
-        void document.exitFullscreen();
-      } else if (wrap.requestFullscreen) {
-        void wrap.requestFullscreen();
-      }
-    }
-
     function bindBodyToggle() {
       const root = findPlayerRoot();
       const video = findVideo(root);
@@ -162,8 +145,7 @@
             clearTimeout(singleClickTimer);
             singleClickTimer = 0;
           }
-          blockPlayerPointerEvent(e);
-          toggleWebFullscreen(root);
+          // ponytail: detail>1 click already blocked; native dblclick = ctrl-fullscreen, not web-fullscreen
         },
         true,
       );
