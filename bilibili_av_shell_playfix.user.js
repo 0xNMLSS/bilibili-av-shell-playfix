@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.8.4
+// @version      0.8.7
 // @match        *://player.bilibili.com/player.html*
 // @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。\n\n测试：https://www.bilibili.com/video/BV1GJ411x7h7/
 // @author       0xNMLSS
@@ -555,6 +555,27 @@
       }
     }
 
+    function currentPageBvid() {
+      const fromPath = location.pathname.match(/\/video\/(BV[\w]+)/i)?.[1];
+      return (fromPath || recovery.bvid || pageLoc.bvid || '').toUpperCase();
+    }
+
+    function normalizeVideoHref(raw) {
+      if (!raw) return null;
+      try {
+        const url = new URL(raw, location.origin);
+        if (!url.pathname.match(/\/video\/(BV[\w]+|av\d+)/i)) return null;
+        return url.href;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function targetBvidFromHref(href) {
+      const match = href.match(/\/video\/(BV[\w]+)/i);
+      return match ? match[1].toUpperCase() : null;
+    }
+
     function buildEmbedPlayerUrl(bvid, cid, pageIndex) {
       const page = pageIndex || pageLoc.page;
       const params = new URLSearchParams({
@@ -757,7 +778,7 @@
         if (!target.hostname.endsWith('bilibili.com')) return false;
         const match = target.pathname.match(/\/video\/(BV[\w]+)/i);
         if (!match) return false;
-        const current = (recovery.bvid || pageLoc.bvid || '').toUpperCase();
+        const current = currentPageBvid();
         return Boolean(current && match[1].toUpperCase() === current);
       } catch (_) {
         return false;
@@ -768,64 +789,15 @@
       return blockErrorRedirect(url) || blockEmbedNavigate(url);
     }
 
-    function installRecommendNavFix() {
-      const RECO_AREA =
-        '#recommend, #reco_wrap, .rec-list, .recommend-container, .recommend-list-v1';
+    const hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+    const nativeHrefSet = hrefDesc?.set;
+    const nativeAssign =
+      typeof Location.prototype.assign === 'function'
+        ? Location.prototype.assign
+        : function fallbackAssign(url) {
+            if (nativeHrefSet) nativeHrefSet.call(this, String(url));
+          };
 
-      function resolveRecommendHref(target) {
-        if (!(target instanceof Element)) return null;
-        let area = target.closest(RECO_AREA);
-        if (!area) {
-          const card = target.closest('.video-page-card-small, .rec-item, .bili-video-card');
-          if (!card?.closest('.right-container, #recommend')) return null;
-          area = card;
-        }
-
-        const direct = target.closest('a[href*="/video/"]');
-        if (direct) {
-          try {
-            return new URL(direct.href, location.origin).href;
-          } catch (_) {
-            return null;
-          }
-        }
-        const link = area.querySelector('a[href*="/video/"]');
-        if (!link) return null;
-        try {
-          return new URL(link.href, location.origin).href;
-        } catch (_) {
-          return null;
-        }
-      }
-
-      document.addEventListener(
-        'click',
-        (e) => {
-          if (!recovery.armed) return;
-          if (e.button !== 0) return;
-          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-          if (!(e.target instanceof Element)) return;
-          if (e.target.closest('#av-shell-playfix-root, iframe[data-av-shell-playfix]')) return;
-
-          const href = resolveRecommendHref(e.target);
-          if (!href) return;
-
-          const match = href.match(/\/video\/(BV[\w]+)/i);
-          if (!match) return;
-          const targetBvid = match[1].toUpperCase();
-          const currentBvid = (recovery.bvid || pageLoc.bvid || '').toUpperCase();
-          if (targetBvid === currentBvid) return;
-
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          location.assign(href);
-        },
-        true,
-      );
-    }
-
-    const nativeAssign = Location.prototype.assign;
     Location.prototype.assign = function (url) {
       if (shouldBlockNavigation(url)) {
         log('blocked assign redirect', url);
@@ -834,7 +806,12 @@
       return nativeAssign.call(this, url);
     };
 
-    const nativeReplace = Location.prototype.replace;
+    const nativeReplace =
+      typeof Location.prototype.replace === 'function'
+        ? Location.prototype.replace
+        : function fallbackReplace(url) {
+            if (nativeHrefSet) nativeHrefSet.call(this, String(url));
+          };
     Location.prototype.replace = function (url) {
       if (shouldBlockNavigation(url)) {
         log('blocked replace redirect', url);
@@ -843,9 +820,7 @@
       return nativeReplace.call(this, url);
     };
 
-    const hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
     if (hrefDesc?.set && hrefDesc?.get) {
-      const nativeHrefSet = hrefDesc.set;
       Object.defineProperty(Location.prototype, 'href', {
         configurable: true,
         enumerable: hrefDesc.enumerable,
@@ -858,6 +833,50 @@
           nativeHrefSet.call(this, url);
         },
       });
+    }
+
+    function installRecommendNavFix() {
+      const RECO_ZONE =
+        '#recommend, #reco_wrap, .rec-list, .recommend-container, .recommend-list-v1, ' +
+        '.right-container, .bili-player-ending-panel, [class*="ending-panel"], [class*="EndingPanel"]';
+
+      function resolveRecommendHref(target) {
+        if (!(target instanceof Element)) return null;
+        if (!target.closest(RECO_ZONE)) return null;
+
+        const direct = target.closest('a[href*="/video/"]');
+        if (direct) return normalizeVideoHref(direct.href);
+
+        const card = target.closest(
+          '.video-page-card-small, .rec-item, .bili-video-card, .feed-card, ' +
+            '.bili-player-video-card, [class*="video-card"], [class*="VideoCard"]',
+        );
+        const root = card || target.closest(RECO_ZONE);
+        const link = root?.querySelector('a[href*="/video/"]');
+        return link ? normalizeVideoHref(link.href) : null;
+      }
+
+      document.addEventListener(
+        'click',
+        (e) => {
+          if (e.button !== 0) return;
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          if (!(e.target instanceof Element)) return;
+          if (e.target.closest('#av-shell-playfix-root, iframe[data-av-shell-playfix]')) return;
+
+          const href = resolveRecommendHref(e.target);
+          if (!href) return;
+
+          const targetBvid = targetBvidFromHref(href);
+          if (!targetBvid || targetBvid === currentPageBvid()) return;
+
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+          location.assign(href);
+        },
+        true,
+      );
     }
 
     async function maybeRecoverView(requestUrl) {

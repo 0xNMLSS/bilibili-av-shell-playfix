@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-07-03
+
+### Fixed
+
+- Recommend full-page navigation no longer calls missing `Location.prototype.assign` in injected page context (use `location.assign` with safe native fallback).
+
+## [0.8.6] - 2026-07-03
+
+### Fixed
+
+- All recommend/related video clicks on `/video/*` pages use full page navigation (not SPA `pathTo`), for both normal and view404 embed playback.
+- Navigation guard uses live URL `bvid`; recommend link resolution covers sidebar, bottom feed, and ending panel.
+
+## [0.8.5] - 2026-07-03
+
+### Fixed
+
+- Recommend click hijack only runs when embed iframe is actually mounted; normal videos keep Bilibili SPA navigation.
+
 ## [0.8.4] - 2026-07-03
 
 ### Fixed
