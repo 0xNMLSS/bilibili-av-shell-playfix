@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         解除B站版权BV视频404播放限制
 // @namespace    https://github.com/0xNMLSS
-// @version      0.8.1
+// @version      0.8.2
 // @match        *://player.bilibili.com/player.html*
 // @description  仅 /video/BV* · 不解番剧。view404 时用 B 站 embed 播放器 + 弹幕恢复播放。
 // @description  测试：https://www.bilibili.com/video/BV1GJ411x7h7/
@@ -111,6 +111,28 @@
       );
     }
 
+    function blockPlayerPointerEvent(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+    }
+
+    function toggleWebFullscreen(root) {
+      const btn =
+        root.querySelector('.bpx-player-ctrl-web-fullscreen') ||
+        root.querySelector('.bpx-player-ctrl-fullscreen');
+      if (btn instanceof HTMLElement) {
+        btn.click();
+        return;
+      }
+      const wrap = root.querySelector('.bpx-player-video-wrap') || root;
+      if (document.fullscreenElement) {
+        void document.exitFullscreen();
+      } else if (wrap.requestFullscreen) {
+        void wrap.requestFullscreen();
+      }
+    }
+
     function bindBodyToggle() {
       const root = findPlayerRoot();
       const video = findVideo(root);
@@ -134,11 +156,14 @@
         (e) => {
           if (!(e.target instanceof Element)) return;
           if (!root.isConnected || !root.contains(e.target)) return;
+          if (isControlBarClick(e.target, root)) return;
+          if (isNativeUiClick(e.target)) return;
           if (singleClickTimer) {
             clearTimeout(singleClickTimer);
             singleClickTimer = 0;
           }
-          // ponytail: let bpx-player handle dblclick fullscreen; do not stopPropagation
+          blockPlayerPointerEvent(e);
+          toggleWebFullscreen(root);
         },
         true,
       );
@@ -152,18 +177,17 @@
           if (isControlBarClick(e.target, root)) return;
           if (isNativeUiClick(e.target)) return;
 
-          // Second click of a double-click: cancel pending single-click toggle
+          // Second click of a double-click: block outside-jump, skip single-click toggle
           if (e.detail > 1) {
             if (singleClickTimer) {
               clearTimeout(singleClickTimer);
               singleClickTimer = 0;
             }
+            blockPlayerPointerEvent(e);
             return;
           }
 
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
+          blockPlayerPointerEvent(e);
 
           if (singleClickTimer) clearTimeout(singleClickTimer);
           singleClickTimer = setTimeout(() => {

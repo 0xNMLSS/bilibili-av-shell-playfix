@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-07-03
+
+### Fixed
+
+- Embed iframe: block the second click of a double-click from triggering outside-jump; double-click now toggles web fullscreen instead of navigating away.
+
 ## [0.8.1] - 2026-07-03
 
 ### Fixed
