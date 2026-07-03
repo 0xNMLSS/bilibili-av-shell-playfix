@@ -49,10 +49,6 @@ Tampermonkey 会按 Greasy Fork 源自动检查更新。
 
 控制台过滤：`AV Shell Playfix`
 
-## 彩蛋
-
-测试链接 [BV1GJ411x7h7](https://www.bilibili.com/video/BV1GJ411x7h7/)（av170001 / Rick Roll）恢复成功时，会在正常 toast 下方多弹一条粉色彩蛋提示。
-
 ## License
 
 MIT
